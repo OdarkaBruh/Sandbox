@@ -13,7 +13,6 @@ public class Main2 {
             put("A", 4.0);
         }};
         calculate(n2, var);
-        //System.out.println("VALID: "+CheckInput.check("a*(3,17/(1+$dcx))"));
     }
 
     public static void main(String formula, HashMap<String,Double> variables) {
@@ -43,7 +42,8 @@ public class Main2 {
     }
 
     private static String formatFormula(String formula) {
-        return formula.replace(" ", "");
+        return formula.replace(" ", "").replace(',', '.')
+                .replace('%', '/');
     }
 }
 
