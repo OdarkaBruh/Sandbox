@@ -1,29 +1,28 @@
-import java.util.ArrayList;
-import java.util.Objects;
+import java.util.HashSet;
 
 /**
  * Class for creating Tokens.
- * Each token saves one action, number to the left of this action, it's priority and neighbours.
+ * Each token saves one action, number to the left of this action and its priority.
  */
 public class Token {
-    /** The arraylist of all (unprocessed) tokens */
-    public static ArrayList<Token> tokens = new ArrayList<>();
-
     /**
-     * The priority of this action. +2 points for each open brackets before
-     * and +1 if the action should be prioritized (aka * / ^ )
+     * The priority of this action.
+     * open brackets ( ==> +2  |  closed brackets ) ==> -2
+     * if this action should be prioritized ( * / ^ ) ==> +1
      */
     int priority;
 
+    /** The name of the variable in a hashset */
     String variableName;
     /**
      * Value of the variable. Digits are saved here.
      * The values of the variables are retrieved from Hashmap and saved here too.
      */
     double variableValue;
-    /** The action (math symbol after digit). Should be unassigned (aka == 0) only for the last token */
-    String actionBranch;
-    ArrayList<modifiers> valueModifier = new ArrayList<>();
+    /** The action (+, -, *, / or ^). Should be unassigned (aka == 0) only for the last token */
+    char actionBranch = 0;
+    /** The additional functions (sin, cos, log, etc.) should be added here */
+    HashSet<modifiers> valueModifier = new HashSet<>();
 
     /**
      * Creates token. It will cut formula to first action symbol, everything before it will parse as variable/number
@@ -33,10 +32,9 @@ public class Token {
      * @param priority The priority of parent action (to account for brackets)
      */
     Token(String formula, int priority) {
-        tokens.add(this);
+        TokenManager.tokens.add(this);
         this.priority = priority;
 
-        //formula = removeBracketsFromString(formula);
         int j = 0;
         while (formula.charAt(j) == '(') j++;
 
@@ -51,34 +49,34 @@ public class Token {
                 valueModifier.add(modifiers.NEGATIVE);
                 j++;
             } else if (isAction(formula.charAt(i))) {
-                actionBranch = String.valueOf(formula.charAt(i));
-                if (i == j) setDefaultVariableValue(actionBranch);
+                actionBranch = formula.charAt(i);
+                if (i == j) setDefaultValue();
                 else parseVariable(formula.substring(j, i));
 
                 createNextToken(formula.substring(i + 1));
                 break;
             }
         }
-        if (this.actionBranch == null) parseVariable(formula.substring(j)); //the last token
-    }
-
-    private String removeBracketsFromString(String value) {
-        int i = 0;
-        while (value.charAt(i) == '(') {
-            this.priority += 2;
-            i++;
+        if (actionBranch == 0) {
+            this.priority = -1;
+            parseVariable(formula.substring(j)); //the last token
         }
-        return value.substring(i);
     }
 
-    private void setDefaultVariableValue(String actionBranch) {
-        if (actionBranch.equals("*") || actionBranch.equals("/") || actionBranch.equals("^"))
-            variableValue = 1;
+    /**
+     * Sets value to default if it's null. In rare cases, it can happen: for example, when the action is in between
+     * two sets of brackets: ((1*a)+(2*b))
+     * <p>
+     * "+" will have an empty value. Therefore, to avoid errors, its variable value will be assigned a value of 0 or 1,
+     * depending on the action (operation).
+     */
+    private void setDefaultValue() {
+        if (actionBranch == '*' || actionBranch == '/' || actionBranch == '^') variableValue = 1;
         else variableValue = 0;
     }
 
     /**
-     * Parse string before the action symbol into a variable (and gets its value) or a number.
+     * Parse string before the action symbol into a variable value (if it's a number) or into a variable name.
      * <p/>
      * In rare cases, the value may be empty, for example, when the action is in between two sets of brackets:
      * ((1*a)+(2*b))
@@ -94,6 +92,11 @@ public class Token {
         } else variableName = value;
     }
 
+    /**
+     * The constructor for a deep copy
+     *
+     * @param t Token to be copied.
+     */
     public Token(Token t) {
         this.priority = t.priority;
         this.variableValue = t.variableValue;
@@ -134,8 +137,7 @@ public class Token {
      * Note: Right symbol will never be null, because the last token is a token with the last number (and no action)
      */
     public void count() {
-        tokens.get(tokens.indexOf(this) + 1).calculatePreviousAction(this);
-        tokens.remove(this);
+        TokenManager.getNextToken(this).calculatePreviousAction(this);
     }
 
     /**
@@ -144,27 +146,19 @@ public class Token {
      * @param prevToken the previous token which action is calculated
      */
     public void calculatePreviousAction(Token prevToken) {
-        switch (prevToken.actionBranch) {
-            case "*":
-                this.variableValue = prevToken.variableValue * this.variableValue;
-                break;
-            case "/":
-                this.variableValue = prevToken.variableValue / this.variableValue;
-                break;
-            case "+":
-                this.variableValue = prevToken.variableValue + this.variableValue;
-                break;
-            case "-":
-                this.variableValue = prevToken.variableValue - this.variableValue;
-                break;
-            case "^":
-                this.variableValue = Math.pow(prevToken.variableValue, this.variableValue);
-                break;
+        switch (prevToken.actionBranch) { //omg new fancy switch method
+            case '*' -> this.variableValue = prevToken.variableValue * this.variableValue;
+            case '/' -> this.variableValue = prevToken.variableValue / this.variableValue;
+            case '+' -> this.variableValue = prevToken.variableValue + this.variableValue;
+            case '-' -> this.variableValue = prevToken.variableValue - this.variableValue;
+            case '^' -> this.variableValue = Math.pow(prevToken.variableValue, this.variableValue);
         }
     }
 
+    /** Gets token's value by variable name (if needed) and applies all modifiers to token's value. */
     public void applyModifiers() {
-        if (this.variableName != null && !variableName.isEmpty()) variableValue = Main2.variables.get(variableName);
+        if (this.variableName != null && !variableName.isEmpty())
+            variableValue = TokenManager.variables.get(variableName);
         for (modifiers m : valueModifier) {
             switch (m) {
                 case modifiers.NEGATIVE -> variableValue = -variableValue;
@@ -187,8 +181,8 @@ public class Token {
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder();
-        sb.append((actionBranch == null ? ' ' : actionBranch));
-        sb.append("\t(").append(String.format("%-2s",priority)).append(")   ");
+        sb.append((actionBranch == 0 ? ' ' : actionBranch));
+        sb.append("\t(").append(String.format("%-2s", priority)).append(")   ");
         sb.append(String.format("%-10.2f", variableValue)).append("\t");
         //sb.append(String.format("%-10s \t", variableName == null ? "" : variableName));
         if (!valueModifier.isEmpty()) {
@@ -200,6 +194,10 @@ public class Token {
     }
 }
 
+/**
+ * Additional functions aka cos, sin, etc. will be saved as "modifiers" of value. Otherwise, the calculation of
+ * the result and creation of tokens becomes a nightmare ; - ;
+ */
 enum modifiers {
     NEGATIVE("neg"),
     SIN("sin"),
@@ -210,12 +208,24 @@ enum modifiers {
     LOG2("log2"),
     SQRT("sqrt");
 
+    /** how additional function is written in a code */
     private final String name;
 
+    /**
+     * Constructor for a modifier
+     *
+     * @param s how additional function is written in a code
+     */
     modifiers(String s) {
         name = s;
     }
 
+    /**
+     * Recognizes and gets needed modifier in a provided String
+     *
+     * @param s String with a modifier
+     * @return modifier inside provided String
+     */
     public static modifiers getByName(String s) {
         for (modifiers m : modifiers.values()) {
             if (m.name.equals(s)) return m;

@@ -10,8 +10,9 @@ public class CheckInput {
     private static final Pattern variablePattern = Pattern.compile("[\\w$_]+");
     /** Pattern for all possible symbols in numbers (All digits + .) */
     private static final Pattern numberPattern = Pattern.compile("[\\d.]+");
+    /** The indexes of found additional actions (otherwise, the check will confuse them with variable names) */
+    static HashSet<Integer> additionalActionsFound;
 
-    private static HashSet<Integer> additionalActionsFound;
     /**
      * Main method which is calling all sub-checks
      * Note: Hashmap will be taken from Main's variables.
@@ -60,7 +61,10 @@ public class CheckInput {
      * @param input The string to be checked.
      * @return Whether the check was successful.
      */
-    private static boolean areBracketsHaveSense(String input) {
+    static boolean areBracketsHaveSense(String input) {
+        if (!input.contains("(") && !input.contains(")")) return true;
+        else if (!input.contains("(") || !input.contains(")")) return false;
+
         input = input.substring(input.indexOf('('), input.lastIndexOf(')') + 1);
         int index = 0;
         for (char c : input.toCharArray()) {
@@ -71,8 +75,9 @@ public class CheckInput {
         return index == 0;
     }
 
+    /** All possible types of character (additional functions are a part of variable) */
     private enum typeChar {
-        ACTION, VARIABLE, DIGIT, BRACKETS
+        ACTION, VARIABLE, DIGIT, BRACKETS, ADDITIONAL
     }
 
     /**
@@ -87,48 +92,48 @@ public class CheckInput {
      * @param input The string to be checked.
      * @return Whether the check was successful.
      */
-    private static boolean areMissingSymbolsPresent(String input) {
+    static boolean areMissingSymbolsPresent(String input) {
         typeChar previousCharacter = getCharType(input.charAt(0));
         typeChar currentCharacter;
 
-        for (int i = 1; i < input.length(); i++) {
+        for (int i = 0; i < input.length(); i++) {
             if (additionalActionsFound.contains(i)) {
-                i = skipAdditionalAction(i, input);
-                previousCharacter = typeChar.VARIABLE;
-            }
+                if (i != 0 && previousCharacter != typeChar.ACTION) return false;
+                i = input.indexOf("(", i);
+                currentCharacter = typeChar.ADDITIONAL;
+            } else if (i == 0) currentCharacter = getCharType(input.charAt(i));
             else if (input.charAt(i) != '(' && input.charAt(i) != ')') {
                 currentCharacter = getCharType(input.charAt(i));
                 if ((currentCharacter == typeChar.DIGIT && previousCharacter == typeChar.VARIABLE) ||
                         (currentCharacter == typeChar.VARIABLE && previousCharacter == typeChar.DIGIT)) {
-                    System.err.println(input.charAt(i));
-                    System.err.println(additionalActionsFound);
-                    System.err.println("There is no math symbol between the number and the letter: " + input.charAt(i));
+                    System.err.println("There is no math symbol between the number" + input.charAt(i - 1) +
+                            "and the letter: " + input.charAt(i));
                     return false;
                 } else if ((currentCharacter == typeChar.ACTION && previousCharacter == typeChar.ACTION) &&
                         !(input.charAt(i) == '-' && input.charAt(i - 1) == '(')) {
                     System.err.println("Two mathematical symbols: " + input.charAt(i - 1) + input.charAt(i));
                     return false;
                 }
-                previousCharacter = currentCharacter;
-            }
+            } else continue;
+            previousCharacter = currentCharacter;
         }
         return true;
     }
 
-    private static HashSet<Integer> getAdditionalActions(String input) {
+    /**
+     * Will save indexes of found additional functions (cos, sin, etc.) and returns them
+     *
+     * @param input the string to be checked
+     * @return a hashmap with all indexes
+     */
+    static HashSet<Integer> getAdditionalActions(String input) {
         HashSet<Integer> result = new HashSet<>();
 
-        for (String m: Stream.of(modifiers.values()).map(modifiers::name).toArray(String[]::new)) {
-            int i = 0;
-            while ((i = input.indexOf(m.toLowerCase(), i+1)) != -1) result.add(i);
+        for (String m : Stream.of(modifiers.values()).map(modifiers::name).toArray(String[]::new)) {
+            int i = -1;
+            while ((i = input.indexOf(m.toLowerCase(), i + 1)) != -1) result.add(i);
         }
         return result;
-    }
-
-    private static int skipAdditionalAction(int i, String input) {
-        do i++;
-        while (input.charAt(i) != ')' || getCharType(input.charAt(i)) == typeChar.ACTION);
-        return i;
     }
 
     /**
@@ -184,6 +189,8 @@ public class CheckInput {
      * @return Whether the check was successful.
      */
     public static boolean checkContentInBrackets(String input) {
+        if (!input.contains("(") && !input.contains(")")) return true;
+
         StringBuilder scannedText = new StringBuilder(input);
         int indexOpenBrackets;
         int indexClosedBrackets;
@@ -239,11 +246,11 @@ public class CheckInput {
         int indexStart = 0;
         String value;
         for (int i = 0; i < input.length(); i++) {
-            if (additionalActionsFound.contains(i)) i = skipAdditionalAction(i, input);
+            if (additionalActionsFound.contains(i)) i = input.indexOf("(", i);
             else if (getCharType(input.charAt(i)) == typeChar.VARIABLE) indexStart++;
             else if (indexStart != 0) {
                 value = input.substring(i - indexStart, i);
-                if (!Main2.variables.containsKey(value)) {
+                if (!TokenManager.variables.containsKey(value)) {
                     System.err.println("Variable " + value + " doesn't exist in provided Hashmap.");
                     return false;
                 }
