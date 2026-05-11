@@ -5,7 +5,8 @@ import java.util.HashMap;
 public class Main2 {
     public static HashMap<String,Double> variables;
     public static void main(String[] args) {
-        String n2 = "b*(3+(4*abc)*(-1)/abc)";
+        String n2 = "b*(tan(3)+(4*abc)*(-7)/log10(abc))";
+        String n1 = "((7+1)*sin(cos(30)))+7";
         HashMap<String, Double> var = new HashMap<>(){{
             put("abc", 2.0);
             put("b", 2.3);
@@ -15,7 +16,7 @@ public class Main2 {
         long startTime = System.currentTimeMillis();
         calculate(n2, var);
         long endtime = System.currentTimeMillis();
-        System.out.println("Time: " + (endtime - startTime));
+        System.out.println("Time: " + (endtime - startTime)+"\n");
 
         startTime = System.currentTimeMillis();
         calculate(n2, var);
@@ -33,7 +34,7 @@ public class Main2 {
         formula = formatFormula(formula);
         if (CacheMachine.formulaInCache(formula) || CheckInput.check(formula)) {
             createTokens(formula);
-            return calculateResult();
+            return TokenManager.calculateResult();
         } else return -1;
     }
     private static void createTokens(String formula) {
@@ -42,19 +43,6 @@ public class Main2 {
             Token.tokens.getLast().priority = -1; //for number-only;
             CacheMachine.saveCache(formula, Token.tokens);
         }
-    }
-
-    private static void getVariables() {
-        for (Token t: Token.tokens) if (t.variableName != null) t.variableValue = variables.get(t.variableName);
-    }
-
-    private static double calculateResult() {
-        getVariables();
-        while (Token.tokens.size()!=1) {
-            Token maxPriority = Token.tokens.stream().max(Comparator.comparingInt(s -> s.priority)).orElseThrow();
-            maxPriority.count();
-        }
-        return Token.getResultAndClearTokens();
     }
 
     private static String formatFormula(String formula) {

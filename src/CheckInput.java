@@ -1,4 +1,6 @@
+import java.util.HashSet;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 /** Checks formula for an error */
 public class CheckInput {
@@ -9,6 +11,7 @@ public class CheckInput {
     /** Pattern for all possible symbols in numbers (All digits + .) */
     private static final Pattern numberPattern = Pattern.compile("[\\d.]+");
 
+    private static HashSet<Integer> additionalActionsFound;
     /**
      * Main method which is calling all sub-checks
      * Note: Hashmap will be taken from Main's variables.
@@ -17,6 +20,8 @@ public class CheckInput {
      * @return whether ALL checks were successful. If at least one of them failed => this check also failed
      */
     public static boolean check(String formula) {
+        additionalActionsFound = getAdditionalActions(formula);
+
         if (!areCharactersValid(formula)) System.err.println("Invalid characters are present.\n" +
                 "Please, check if you are using right mathematical symbols and variable names are spelled correctly");
         else if (!areBracketsHaveSense(formula)) System.err.println("Brackets error.\n" +
@@ -87,10 +92,16 @@ public class CheckInput {
         typeChar currentCharacter;
 
         for (int i = 1; i < input.length(); i++) {
-            if (input.charAt(i) != '(' && input.charAt(i) != ')') {
+            if (additionalActionsFound.contains(i)) {
+                i = skipAdditionalAction(i, input);
+                previousCharacter = typeChar.VARIABLE;
+            }
+            else if (input.charAt(i) != '(' && input.charAt(i) != ')') {
                 currentCharacter = getCharType(input.charAt(i));
                 if ((currentCharacter == typeChar.DIGIT && previousCharacter == typeChar.VARIABLE) ||
                         (currentCharacter == typeChar.VARIABLE && previousCharacter == typeChar.DIGIT)) {
+                    System.err.println(input.charAt(i));
+                    System.err.println(additionalActionsFound);
                     System.err.println("There is no math symbol between the number and the letter: " + input.charAt(i));
                     return false;
                 } else if ((currentCharacter == typeChar.ACTION && previousCharacter == typeChar.ACTION) &&
@@ -102,6 +113,22 @@ public class CheckInput {
             }
         }
         return true;
+    }
+
+    private static HashSet<Integer> getAdditionalActions(String input) {
+        HashSet<Integer> result = new HashSet<>();
+
+        for (String m: Stream.of(modifiers.values()).map(modifiers::name).toArray(String[]::new)) {
+            int i = 0;
+            while ((i = input.indexOf(m.toLowerCase(), i+1)) != -1) result.add(i);
+        }
+        return result;
+    }
+
+    private static int skipAdditionalAction(int i, String input) {
+        do i++;
+        while (input.charAt(i) != ')' || getCharType(input.charAt(i)) == typeChar.ACTION);
+        return i;
     }
 
     /**
@@ -212,11 +239,12 @@ public class CheckInput {
         int indexStart = 0;
         String value;
         for (int i = 0; i < input.length(); i++) {
-            if (getCharType(input.charAt(i)) == typeChar.VARIABLE) indexStart++;
+            if (additionalActionsFound.contains(i)) i = skipAdditionalAction(i, input);
+            else if (getCharType(input.charAt(i)) == typeChar.VARIABLE) indexStart++;
             else if (indexStart != 0) {
                 value = input.substring(i - indexStart, i);
                 if (!Main2.variables.containsKey(value)) {
-                    System.err.println("Variable " + value + "doesn't exist in provided Hashmap.");
+                    System.err.println("Variable " + value + " doesn't exist in provided Hashmap.");
                     return false;
                 }
                 indexStart = 0;

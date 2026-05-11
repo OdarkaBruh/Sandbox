@@ -1,4 +1,5 @@
 import java.util.ArrayList;
+import java.util.Objects;
 
 /**
  * Class for creating Tokens.
@@ -22,41 +23,58 @@ public class Token {
     double variableValue;
     /** The action (math symbol after digit). Should be unassigned (aka == 0) only for the last token */
     String actionBranch;
+    ArrayList<modifiers> valueModifier = new ArrayList<>();
 
     /**
      * Creates token. It will cut formula to first action symbol, everything before it will parse as variable/number
      * and everything after (if something left) will pass to create a next token.
      *
-     * @param value    The formula to parse (or part of it)
+     * @param formula  The formula to parse (or part of it)
      * @param priority The priority of parent action (to account for brackets)
      */
-    Token(String value, int priority) {
-        this.priority = priority;
+    Token(String formula, int priority) {
         tokens.add(this);
+        this.priority = priority;
 
-        for (int i = 0; i < value.length(); i++) {
-            if (value.charAt(i) == '(') this.priority += 2;
-            else if (value.charAt(i) == ')') this.priority -= 2;
-            else if (i == 0 && value.charAt(0) == '-') { //if negative number in brackets (ex. (-5))
-                while (!isAction(value.charAt(i + 1)) || i == value.length()) i++;
-                parseVariable(value.substring(1, i));
-                variableValue *= -1;
-            } else if (isAction(value.charAt(i))) {
-                actionBranch = String.valueOf(value.charAt(i));
-                parseVariable(value.substring(0, i));
-                createNextToken(value.substring(i + 1));
+        //formula = removeBracketsFromString(formula);
+        int j = 0;
+        while (formula.charAt(j) == '(') j++;
+
+        for (int i = j; i < formula.length(); i++) {
+            if (formula.charAt(i) == '(') {
+                valueModifier.add(modifiers.getByName(formula.substring(j, i)));
+                this.priority += 2;
+                j = i + 1;
+            } else if (formula.charAt(i) == ')') {
+                this.priority -= 2;
+            } else if (i == j && formula.charAt(j) == '-') {
+                valueModifier.add(modifiers.NEGATIVE);
+                j++;
+            } else if (isAction(formula.charAt(i))) {
+                actionBranch = String.valueOf(formula.charAt(i));
+                if (i == j) setDefaultVariableValue(actionBranch);
+                else parseVariable(formula.substring(j, i));
+
+                createNextToken(formula.substring(i + 1));
                 break;
             }
         }
-
-        if (actionBranch == null) parseVariable(value);
+        if (this.actionBranch == null) parseVariable(formula.substring(j)); //the last token
     }
 
-    public Token(Token t) {
-        this.priority = t.priority;
-        this.variableValue = t.variableValue;
-        this.actionBranch = t.actionBranch;
-        this.variableName = t.variableName;
+    private String removeBracketsFromString(String value) {
+        int i = 0;
+        while (value.charAt(i) == '(') {
+            this.priority += 2;
+            i++;
+        }
+        return value.substring(i);
+    }
+
+    private void setDefaultVariableValue(String actionBranch) {
+        if (actionBranch.equals("*") || actionBranch.equals("/") || actionBranch.equals("^"))
+            variableValue = 1;
+        else variableValue = 0;
     }
 
     /**
@@ -71,11 +89,17 @@ public class Token {
      */
     private void parseVariable(String value) {
         value = value.replaceAll("[()]", "");
-        if (value.isEmpty() && variableName == null) {
-            if (actionBranch.equals("*") || actionBranch.equals("/") || actionBranch.equals("^")) variableValue = 1;
-            else variableValue = 0;
-        } else if (Character.isDigit(value.charAt(0))) variableValue = Double.parseDouble(value);
-        else variableName = value;
+        if (Character.isDigit(value.charAt(0))) {
+            variableValue = Double.parseDouble(value);
+        } else variableName = value;
+    }
+
+    public Token(Token t) {
+        this.priority = t.priority;
+        this.variableValue = t.variableValue;
+        this.actionBranch = t.actionBranch;
+        this.variableName = t.variableName;
+        this.valueModifier = t.valueModifier;
     }
 
     /**
@@ -103,22 +127,6 @@ public class Token {
     }
 
     /**
-     * Information about the class instance to be printed
-     *
-     * @return the String with information about instance (action symbol, priority, variableValue)
-     */
-    @Override
-    public String toString() {
-        StringBuilder sb = new StringBuilder();
-        sb.append((actionBranch == null ? ' ' : actionBranch));
-        sb.append("(").append(priority).append(")   ");
-        sb.append(variableValue);
-        sb.append("\t").append((variableName == null ? "" : variableName));
-        return sb.toString();
-    }
-
-
-    /**
      * Performs a calculation (action symbol). The token always contains the number to the left of the action,
      * and the action itself, but not the right number. For simplicity, it will just call method of next (right) token,
      * because one way or another, the result needs to be safe there.
@@ -126,7 +134,7 @@ public class Token {
      * Note: Right symbol will never be null, because the last token is a token with the last number (and no action)
      */
     public void count() {
-        tokens.get(tokens.indexOf(this)).calculatePreviousAction(this);
+        tokens.get(tokens.indexOf(this) + 1).calculatePreviousAction(this);
         tokens.remove(this);
     }
 
@@ -138,40 +146,81 @@ public class Token {
     public void calculatePreviousAction(Token prevToken) {
         switch (prevToken.actionBranch) {
             case "*":
-                variableValue = prevToken.variableValue * variableValue;
+                this.variableValue = prevToken.variableValue * this.variableValue;
                 break;
             case "/":
-                variableValue = prevToken.variableValue / variableValue;
+                this.variableValue = prevToken.variableValue / this.variableValue;
                 break;
             case "+":
-                variableValue = prevToken.variableValue + variableValue;
+                this.variableValue = prevToken.variableValue + this.variableValue;
                 break;
             case "-":
-                variableValue = prevToken.variableValue - variableValue;
+                this.variableValue = prevToken.variableValue - this.variableValue;
                 break;
             case "^":
-                variableValue = Math.pow(prevToken.variableValue, variableValue);
+                this.variableValue = Math.pow(prevToken.variableValue, this.variableValue);
                 break;
         }
     }
 
-    public static double getResultAndClearTokens() {
-        double result = Token.tokens.getLast().variableValue;
-        System.out.println("FINISHED! Result:" + result);
-        tokens.clear();
-        return result;
+    public void applyModifiers() {
+        if (this.variableName != null && !variableName.isEmpty()) variableValue = Main2.variables.get(variableName);
+        for (modifiers m : valueModifier) {
+            switch (m) {
+                case modifiers.NEGATIVE -> variableValue = -variableValue;
+                case modifiers.SIN -> variableValue = Math.sin(variableValue);
+                case modifiers.COS -> variableValue = Math.cos(variableValue);
+                case modifiers.TAN -> variableValue = Math.tan(variableValue);
+                case modifiers.ATAN -> variableValue = Math.atan(variableValue);
+                case modifiers.LOG2 -> variableValue = Math.log(variableValue) / Math.log(2);
+                case modifiers.LOG10 -> variableValue = Math.log10(variableValue);
+                case modifiers.SQRT -> variableValue = Math.sqrt(variableValue);
+            }
+        }
     }
 
     /**
-     * Prints all tokens (useful for debug)
+     * Information about the class instance to be printed
+     *
+     * @return the String with information about instance (action symbol, priority, variableValue)
      */
-    public static void printAllTokens() {
-        System.out.println();
-        for (Token e : Token.tokens) {
-            System.out.println(e);
+    @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder();
+        sb.append((actionBranch == null ? ' ' : actionBranch));
+        sb.append("\t(").append(String.format("%-2s",priority)).append(")   ");
+        sb.append(String.format("%-10.2f", variableValue)).append("\t");
+        //sb.append(String.format("%-10s \t", variableName == null ? "" : variableName));
+        if (!valueModifier.isEmpty()) {
+            sb.append("[ ");
+            valueModifier.forEach(n -> sb.append(n).append(" "));
+            sb.append("]\t");
         }
+        return sb.toString();
     }
 }
 
+enum modifiers {
+    NEGATIVE("neg"),
+    SIN("sin"),
+    COS("cos"),
+    TAN("tan"),
+    ATAN("atan"),
+    LOG10("log10"),
+    LOG2("log2"),
+    SQRT("sqrt");
 
+    private final String name;
+
+    modifiers(String s) {
+        name = s;
+    }
+
+    public static modifiers getByName(String s) {
+        for (modifiers m : modifiers.values()) {
+            if (m.name.equals(s)) return m;
+        }
+        return null;
+    }
+}
 
